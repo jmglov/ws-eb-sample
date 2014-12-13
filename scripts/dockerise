@@ -1,0 +1,36 @@
+#!/bin/bash
+
+ME=`basename $0`
+
+PROJECT_NAME=`head -n 1 project.clj | awk '{print $2}'`
+PROJECT_VERSION=`head -n 1 project.clj | awk '{print $3}' | sed -e 's/"//g'`
+IMAGE_PREFIX=clojure
+IMAGE_NAME="$IMAGE_PREFIX/$PROJECT_NAME:$PROJECT_VERSION"
+
+if [ "$1" = 'run' ]; then 
+    docker run -p 8080:8080 "$IMAGE_NAME"
+    exit
+fi
+
+lein clean && lein uberjar
+
+cat >target/Dockerfile <<EOF
+FROM java:7
+
+ADD $PROJECT_NAME-$PROJECT_VERSION-standalone.jar $PROJECT_NAME.jar
+EXPOSE 80
+CMD ["/usr/bin/java","-jar","/$PROJECT_NAME.jar"]
+EOF
+
+cd target
+
+files="Dockerfile $PROJECT_NAME-$PROJECT_VERSION-standalone.jar"
+
+if [ "$1" = 'beanstalk' ]; then
+    zip $PROJECT_NAME.zip $files
+elif [ "$1" = 'local' ]; then
+    tar czf context.tar.gz $files
+    docker build -t "$IMAGE_NAME" - <context.tar.gz
+else
+    echo "USAGE: $ME ec2 | local | run"
+fi
